@@ -50,7 +50,7 @@ Use the **full UUID** (not the 8-char prefix). Check the `Status` field:
 | `pending`, `executing` | Wait 30s, poll again. Repeat until terminal. |
 | `awaiting_approval` | Tell user: "QA approval needed — approve via `glide ui`" |
 | `succeeded` | Report success + Jenkins build URL if shown |
-| `failed` | Report failure reason. Offer: `uv run glide deploy rerun <id>` |
+| `failed` | **Get the reason first.** If the status output doesn't show a failure detail, run `glide history deploy --limit 5` and `glide deploy apps` to cross-check. Common causes: unknown app name, invalid branch, Jenkins build failure. Report the specific reason to the user, then offer: `uv run glide deploy rerun <id>` |
 | `cancelled` | Report it was cancelled |
 
 **Variants:**
