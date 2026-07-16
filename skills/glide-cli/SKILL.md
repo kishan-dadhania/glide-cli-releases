@@ -48,7 +48,7 @@ Use the **full UUID** (not the 8-char prefix). Check the `Status` field:
 | Status | What to do |
 |--------|-----------|
 | `pending`, `executing` | Wait 30s, poll again. Repeat until terminal. |
-| `awaiting_approval` | Tell user: "QA approval needed — approve via `glide ui`" |
+| `awaiting_approval` | **Dev deploys can be auto-approved.** Ask the user: "This deploy needs approval — approve it?" If yes, call the API directly (see Approving deploys below). For QA/prod deploys the user must approve via `glide ui`. |
 | `succeeded` | Report success + Jenkins build URL if shown |
 | `failed` | **Get the reason first.** If the status output doesn't show a failure detail, run `glide history deploy --limit 5` and `glide deploy apps` to cross-check. Common causes: unknown app name, invalid branch, Jenkins build failure. Report the specific reason to the user, then offer: `uv run glide deploy rerun <id>` |
 | `cancelled` | Report it was cancelled |
@@ -85,9 +85,9 @@ uv run glide release-train --repo owner/repo          # filter to one repo
 ### User says "show deployment history"
 
 ```bash
-uv run glide history deploy [-n 20]
-uv run glide history prs [-n 20]
-uv run glide history releases [-n 20]
+uv run glide history deploy --limit 20
+uv run glide history prs --limit 20
+uv run glide history releases --limit 20
 ```
 
 ### User says "list apps / branches"
@@ -103,12 +103,29 @@ uv run glide deploy branches
 uv run glide ui
 ```
 
+## Approving deploys
+
+When a deploy hits `awaiting_approval`, call the decision API directly. Read API URL + key from `~/.glide/config.json`:
+
+```bash
+API_URL=$(cat ~/.glide/config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['api_url'])")
+API_KEY=$(cat ~/.glide/config.json | python3 -c "import sys,json; print(json.load(sys.stdin)['api_key'])")
+curl -s -X POST "$API_URL/api/v1/deploy/<full-uuid>/decision" \
+  -H "X-Glide-API-Key: $API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"decision":"approved"}'
+```
+
+Returns `{"status":"decision_submitted"}` on success. Then resume 30s polling — the deploy will move to `executing` → `succeeded`/`failed`.
+
+**For dev deploys**: the deployer's own `deploy` scope is sufficient to approve — no admin needed.
+
 ## Reading output
 
-- Deploy/watch: shows progress bar, Jenkins build URL, final status
-- `--no-watch`: returns a request ID like `a1b2c3d4` — use with `glide status <id>`
+- Deploy with `--no-watch`: returns a request ID immediately — poll with `glide status <id>`
+- Status output: shows App, Env, Status, and for successful deploys a Jenkins build URL
 - PR review: structured verdict with risk level and blockers
-- History: tables with request ID, app, env, status, timestamp
+- History: tables with request ID, app, env, status, timestamp — use `--limit` (not `-n`)
 
 ## Error recovery
 
@@ -118,14 +135,18 @@ uv run glide ui
 | `401 Unauthorized` | Re-run `glide login` |
 | `500` on status check | Use the full UUID (not the 8-char prefix); or check `glide ui` |
 | Config URL didn't update | Re-run `glide config --url <url>` — it may need a second attempt |
+| Deploy fails with no reason | Run `glide history deploy --limit 5` and `glide deploy apps` to diagnose |
+| History flag `-n` not recognized | Use `--limit` (e.g. `--limit 20`), not `-n` |
 
 ⚠️ **UUID truncation**: the CLI shows 8-char prefixes in UI but the API needs full UUIDs. When debugging with curl, always use full UUIDs.
+
+⚠️ **Command structure**: deploy uses double `deploy`: `glide deploy deploy <app> to <env>`. Not `glide deploy <app> to <env>`.
 
 ## Command → endpoint quick reference
 
 | CLI Command | API Endpoint | Auth Scope |
 |-------------|-------------|------------|
-| `glide deploy ...` | `POST /deploy/` | `deploy` |
+| `glide deploy deploy ...` | `POST /deploy/` | `deploy` |
 | `glide deploy cancel <id>` | `DELETE /deploy/{id}` | `deploy` |
 | `glide deploy rerun <id>` | `POST /deploy/{id}/rerun` | `deploy` |
 | `glide deploy promote <app> --branch <b>` | `POST /deploy/` | `deploy` |
