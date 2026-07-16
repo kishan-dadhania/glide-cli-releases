@@ -1,118 +1,136 @@
 ---
 name: glide-cli
-description: Terminal interface for the Glide Deployment Platform — deploy services, review PRs, run release pipelines, check release trains, and view history. Use this skill whenever the user mentions deploying to Glide, Glide CLI, glide deploy, glide release, PR reviews for Glide, checking deployment status, release trains, or any Glide platform operations even if they don't explicitly name the CLI tool.
+description: Operate the Glide CLI — deploy, review PRs, run releases, view the release train, and manage config. Use when the user mentions `glide`, `glide deploy`, `glide pr-review`, `glide release`, `glide release-train`, `glide config`, `glide health`, `glide login`, the Glide Deployment Platform, or the glide-agents repo CLI.
 ---
 
 # Glide CLI
 
-Terminal tool for the **Glide AI-powered Deployment Platform**. Deploy to dev/QA, run AI code reviews, execute release pipelines, check release trains, and browse deployment history — all from the command line.
+Terminal client for the Glide Deployment Platform. Talks to `<api_url>/api/v1/` via `X-Glide-API-Key`.
 
-## Install
-
-```bash
-bash <(curl -fsSL https://gist.githubusercontent.com/kishan-dadhania/9f1726e99891456239b6c589ab0d7dc0/raw/install.sh)
-```
-
-Then configure:
+## Before anything else — check setup
 
 ```bash
-glide login   # Enter API key + server URL (ask your platform admin)
-glide health  # Verify connectivity
+# Is it installed?
+which glide
+
+# If not installed globally, run from the repo:
+cd /Users/kishand/GLIDE/OTHER_CODE/glide-agents/glide-cli
+uv run glide <command>
 ```
 
-## Quick Reference
+## Auth & config
 
-| Command | What it does |
-|---------|-------------|
-| `glide deploy <app> to <env> from <branch>` | Deploy an app |
-| `glide deploy promote <app> --branch <b>` | Promote dev → QA |
-| `glide deploy rerun <request-id>` | Rerun failed deployment |
-| `glide deploy cancel <request-id>` | Cancel pending/executing deploy |
-| `glide deploy apps` / `glide deploy branches` | List apps / branches |
-| `glide status <request-id>` | Check deployment status |
-| `glide pr-review <github-url>` | AI code review |
-| `glide release <github-url>` | Full release pipeline |
-| `glide release --skip-review` | Skip AI review in release |
-| `glide release --skip-blockers` | Ignore review blockers |
-| `glide history deploy` | Deployment history table |
-| `glide history prs` | PR review history table |
-| `glide history releases` | Release pipeline history |
-| `glide release-train` | View open PRs on current release branch |
-| `glide release-train --repo owner/repo` | Filter to one repo |
-| `glide ui` | Open Web dashboard in browser |
-| `glide config` / `glide login` | View/update settings |
-| `glide --version` | Show version |
+Config lives at `~/.glide/config.json`. Run `glide login` to set it up interactively.
 
-## Deploy Patterns
+Env var overrides (take precedence over file): `GLIDE_API_URL`, `GLIDE_API_KEY`.
 
-### Natural language (recommended)
+⚠️ `glide config --url <url>` sometimes prints success but doesn't write. Verify: `cat ~/.glide/config.json`.
+
+## Action recipes
+
+### User says "deploy X to Y"
+
 ```bash
-glide deploy search to dev
-glide deploy client to qa from release/26.05.24
-glide deploy backend to dev from feature/my-branch
+uv run glide deploy <app> to <env> [from <branch>]   # watch live
+uv run glide deploy <app> to <env> --no-watch         # fire-and-forget → returns request ID
 ```
 
-### Interactive (from repo dir)
+Then monitor:
 ```bash
-cd ~/code/my-service
-glide deploy               # auto-detects app + branch, prompts for env
+uv run glide status <request-id> --watch
 ```
 
-### Watch / fire-and-forget
+**Variants:**
+- `glide deploy promote <app> --branch <b>` — promote dev → QA
+- `glide deploy rerun <request-id>` — retry a failed deploy
+- `glide deploy cancel <request-id>` — cancel a pending/executing deploy
+
+### User says "review PR X"
+
 ```bash
-glide deploy backend to qa from master --no-watch   # returns request ID immediately
-glide status <request-id> --watch                     # watch progress later
+uv run glide pr-review <github-pr-url>
+# or multiple: uv run glide pr-review <url1> <url2>
 ```
 
-## PR Review Output Format
+Returns: verdict (REQUEST_CHANGES/APPROVED/COMMENT), risk level, blockers, major issues, suggested fixes.
 
-The AI review returns a structured result:
-- **Verdict**: REQUEST_CHANGES / APPROVED / COMMENT
-- **Risk level**: low / medium / high
-- **Blockers**: must-fix issues before merge
-- **Major issues**: should-fix before merge
-- **Actions**: suggested fixes
+### User says "release X"
 
-## Release Pipeline
-
-The release command runs: AI review → gate on blockers → create release branch → merge PRs → open release PR against main.
-
-Use `--skip-review` to skip AI review and go straight to release.
-Use `--skip-blockers` to proceed even if review finds blockers (admin only).
-
-## Configuration
-
-Config lives at `~/.glide/config.json`:
-```json
-{"api_url": "https://api-int-dev.bivotech.co/glide-agents", "api_key": "glide_..."}
+```bash
+uv run glide release <github-pr-url>                  # full pipeline: review → gate → release
+uv run glide release <url> --skip-review              # skip AI review
+uv run glide release <url> --skip-blockers            # proceed despite blockers (admin)
 ```
 
-Env var overrides: `GLIDE_API_URL`, `GLIDE_API_KEY` (useful for CI/CD).
+### User says "what's on the release train?"
 
-## API Key Roles
+```bash
+uv run glide release-train                            # all repos
+uv run glide release-train --repo owner/repo          # filter to one repo
+```
 
-| Role | Scopes |
-|------|--------|
-| `admin` | `admin:all` — full access |
-| `developer` | `deploy`, `pr_review`, `release` |
-| `deployer` | `deploy` only |
+### User says "show deployment history"
 
-Keys are created by admins on the server via `make key-create NAME=<name> ROLE=<role>`.
+```bash
+uv run glide history deploy [-n 20]
+uv run glide history prs [-n 20]
+uv run glide history releases [-n 20]
+```
 
-## Troubleshooting
+### User says "list apps / branches"
 
-| Problem | Fix |
+```bash
+uv run glide deploy apps
+uv run glide deploy branches
+```
+
+### User says "open the Glide dashboard"
+
+```bash
+uv run glide ui
+```
+
+## Reading output
+
+- Deploy/watch: shows progress bar, Jenkins build URL, final status
+- `--no-watch`: returns a request ID like `a1b2c3d4` — use with `glide status <id>`
+- PR review: structured verdict with risk level and blockers
+- History: tables with request ID, app, env, status, timestamp
+
+## Error recovery
+
+| Symptom | Fix |
 |---------|-----|
-| `glide: command not found` | `pipx ensurepath` then restart shell |
-| `401 Unauthorized` | `glide login` to re-enter API key |
-| `500` on status | Use full UUID or `glide ui` |
-| Wrong version | `pipx reinstall glide-cli` |
-| `localhost:8000` in config | `glide config --url https://your-server.com` |
+| `glide: command not found` | Use `uv run glide` from the repo directory |
+| `401 Unauthorized` | Re-run `glide login` |
+| `500` on status check | Use the full UUID (not the 8-char prefix); or check `glide ui` |
+| Config URL didn't update | Re-run `glide config --url <url>` — it may need a second attempt |
 
-## Upgrading
+⚠️ **UUID truncation**: the CLI shows 8-char prefixes in UI but the API needs full UUIDs. When debugging with curl, always use full UUIDs.
 
-```bash
-pipx upgrade glide-cli
-# or re-run the one-line installer
-bash <(curl -fsSL https://gist.githubusercontent.com/kishan-dadhania/9f1726e99891456239b6c589ab0d7dc0/raw/install.sh)
-```
+## Command → endpoint quick reference
+
+| CLI Command | API Endpoint | Auth Scope |
+|-------------|-------------|------------|
+| `glide deploy ...` | `POST /deploy/` | `deploy` |
+| `glide deploy cancel <id>` | `DELETE /deploy/{id}` | `deploy` |
+| `glide deploy rerun <id>` | `POST /deploy/{id}/rerun` | `deploy` |
+| `glide deploy promote <app> --branch <b>` | `POST /deploy/` | `deploy` |
+| `glide deploy apps` | `GET /deploy/apps` | any auth |
+| `glide deploy branches` | `GET /deploy/branches` | any auth |
+| `glide status <id> [--watch]` | `GET /deploy/{id}` | any auth |
+| `glide pr-review <urls>` | `POST /prs/review` | `pr_review` |
+| `glide release <urls>` | `POST /releases/pipeline` | `release` |
+| `glide release-train` | `GET /releases/repos` + `GET /releases/train` | any auth |
+| `glide history deploy` | `GET /deploy/history` | any auth |
+| `glide history prs` | `GET /prs/history` | any auth |
+| `glide history releases` | `GET /releases/history` | any auth |
+| `glide ui` | — (opens browser) | none |
+| `glide health` | `GET /health` | none |
+
+## Security model
+
+Server hashes keys (SHA-256) → looks up in `api_key` table. Roles:
+- `admin` → `admin:all`
+- `developer` → `deploy`, `pr_review`, `release`
+- `deployer` → `deploy` only
