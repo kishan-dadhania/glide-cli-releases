@@ -30,19 +30,32 @@ Env var overrides (take precedence over file): `GLIDE_API_URL`, `GLIDE_API_KEY`.
 
 ### User says "deploy X to Y"
 
-```bash
-uv run glide deploy <app> to <env> [from <branch>]   # watch live
-uv run glide deploy <app> to <env> --no-watch         # fire-and-forget → returns request ID
-```
+Always use `--no-watch` to get the request ID immediately, then poll status every 30s until terminal.
 
-Then monitor:
+**Step 1 — Fire the deploy:**
 ```bash
-uv run glide status <request-id> --watch
+cd /Users/kishand/GLIDE/OTHER_CODE/glide-agents/glide-cli
+uv run glide deploy deploy <app> to <env> [from <branch>] --no-watch
 ```
+Returns a request ID immediately. Example: `🚀 Deployment requested! ID: 414d7753-a4f1-45ae-90a2-b1c909a6e457`
+
+**Step 2 — Poll every 30s until terminal state:**
+```bash
+uv run glide status <full-uuid>
+```
+Use the **full UUID** (not the 8-char prefix). Check the `Status` field:
+
+| Status | What to do |
+|--------|-----------|
+| `pending`, `executing` | Wait 30s, poll again. Repeat until terminal. |
+| `awaiting_approval` | Tell user: "QA approval needed — approve via `glide ui`" |
+| `succeeded` | Report success + Jenkins build URL if shown |
+| `failed` | Report failure reason. Offer: `uv run glide deploy rerun <id>` |
+| `cancelled` | Report it was cancelled |
 
 **Variants:**
-- `glide deploy promote <app> --branch <b>` — promote dev → QA
-- `glide deploy rerun <request-id>` — retry a failed deploy
+- `glide deploy promote <app> --branch <b>` — promote dev → QA (same polling pattern)
+- `glide deploy rerun <request-id>` — retry a failed deploy (same polling pattern)
 - `glide deploy cancel <request-id>` — cancel a pending/executing deploy
 
 ### User says "review PR X"
