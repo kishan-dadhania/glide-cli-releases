@@ -30,33 +30,26 @@ Env var overrides (take precedence over file): `GLIDE_API_URL`, `GLIDE_API_KEY`.
 
 ### User says "deploy X to Y"
 
-Always use `--no-watch` to get the request ID immediately, then poll status every 30s until terminal.
-
-**Step 1 — Fire the deploy:**
+**Preferred: single command with --wait (fire + poll + return final JSON):**
 ```bash
 cd /Users/kishand/GLIDE/OTHER_CODE/glide-agents/glide-cli
-uv run glide deploy deploy <app> to <env> [from <branch>] --no-watch
+uv run glide deploy deploy <app> to <env> [from <branch>] --no-watch --json --wait
 ```
-Returns a request ID immediately. Example: `🚀 Deployment requested! ID: 414d7753-a4f1-45ae-90a2-b1c909a6e457`
+This fires the deploy, polls every 5s, and returns the final status as JSON. Timeout after 15 minutes. Use this whenever possible — one command, one result.
 
-**Step 2 — Poll every 30s until terminal state:**
+**Fallback: two-step manual polling (use when --wait is unavailable):**
 ```bash
+# Step 1 — Fire:
+uv run glide deploy deploy <app> to <env> [from <branch>] --no-watch
+# Step 2 — Poll every 30s:
 uv run glide status <full-uuid>
 ```
-Use the **full UUID** (not the 8-char prefix). Check the `Status` field:
-
-| Status | What to do |
-|--------|-----------|
-| `pending`, `executing` | Wait 30s, poll again. Repeat until terminal. |
-| `awaiting_approval` | **Dev deploys can be auto-approved.** Ask the user: "This deploy needs approval — approve it?" If yes, call the API directly (see Approving deploys below). For QA/prod deploys the user must approve via `glide ui`. |
-| `succeeded` | Report success + Jenkins build URL if shown |
-| `failed` | **Get the reason first.** If the status output doesn't show a failure detail, run `glide history deploy --limit 5` and `glide deploy apps` to cross-check. Common causes: unknown app name, invalid branch, Jenkins build failure. Report the specific reason to the user, then offer: `uv run glide deploy rerun <id>` |
-| `cancelled` | Report it was cancelled |
 
 **Variants:**
-- `glide deploy promote <app> --branch <b>` — promote dev → QA (same polling pattern)
-- `glide deploy rerun <request-id>` — retry a failed deploy (same polling pattern)
+- `glide deploy promote <app> --branch <b>` — promote dev → QA
+- `glide deploy rerun <request-id>` — retry a failed deploy
 - `glide deploy cancel <request-id>` — cancel a pending/executing deploy
+- `glide deploy check <app> <env> --json` — check if already deploying there
 
 ### User says "review PR X"
 
@@ -85,7 +78,7 @@ uv run glide release-train --repo owner/repo          # filter to one repo
 ### User says "show deployment history"
 
 ```bash
-uv run glide history deploy --limit 20
+uv run glide history deploy --limit 20 [--status succeeded/failed]
 uv run glide history prs --limit 20
 uv run glide history releases --limit 20
 ```
@@ -152,6 +145,9 @@ Returns `{"status":"decision_submitted"}` on success. Then resume 30s polling �
 | `glide deploy promote <app> --branch <b>` | `POST /deploy/` | `deploy` |
 | `glide deploy apps` | `GET /deploy/apps` | any auth |
 | `glide deploy branches` | `GET /deploy/branches` | any auth |
+| `glide deploy check <app> <env>` | `GET /deploy/concurrency-check` | `deploy` |
+| `glide approve <id>` | `POST /deploy/{id}/decision` | `deploy` |
+| `glide reject <id>` | `POST /deploy/{id}/decision` | `deploy` |
 | `glide status <id> [--watch]` | `GET /deploy/{id}` | any auth |
 | `glide pr-review <urls>` | `POST /prs/review` | `pr_review` |
 | `glide release <urls>` | `POST /releases/pipeline` | `release` |
